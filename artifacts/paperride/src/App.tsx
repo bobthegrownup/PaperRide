@@ -172,7 +172,14 @@ function CompetitionPage() {
   const [copied, setCopied] = useState(false);
   const [pricingError, setPricingError] = useState('');
   const queryClient = useQueryClient();
-  const competitionQuery = useGetCurrentCompetition();
+  const competitionParams = wallet ? { wallet } : undefined;
+  const competitionQuery = useGetCurrentCompetition(competitionParams, {
+    query: {
+      queryKey: getGetCurrentCompetitionQueryKey(competitionParams),
+      refetchInterval: 5_000,
+      refetchOnWindowFocus: true,
+    },
+  });
   const historyParams = { wallet: wallet || 'wallet-not-connected' };
   const historyQuery = useGetMyHistory(historyParams, { query: { enabled: Boolean(wallet), queryKey: getGetMyHistoryQueryKey(historyParams) } });
   const debouncedMarketQuery = useDebouncedValue(marketQuery);
@@ -186,7 +193,21 @@ function CompetitionPage() {
   const history = historyQuery.data ?? [];
   const countdown = useCountdown(competition?.round.closesAt);
   const searchResults = marketSearch.data ?? [];
-  const mySubmission = confirmation ?? competition?.mySubmission;
+  const localSubmission = confirmation?.roundId === competition?.round.id ? confirmation : null;
+  const mySubmission = localSubmission ?? competition?.mySubmission;
+  const canSubmit = Boolean(
+    wallet
+      && selectedMarket
+      && !countdown.expired
+      && !submitMutation.isPending
+      && !mySubmission,
+  );
+
+  useEffect(() => {
+    if (confirmation && competition && confirmation.roundId !== competition.round.id) {
+      setConfirmation(null);
+    }
+  }, [competition, confirmation]);
 
   if (!competition) {
     return <div className="mx-auto flex min-h-[65dvh] max-w-[1420px] items-center justify-center px-4"><div className="rounded-2xl border border-card-border bg-card px-6 py-8 text-center panel-shadow"><RefreshCw className="mx-auto mb-3 animate-spin text-[hsl(var(--primary))]" size={22} /><p className="font-bold">Opening the live round…</p>{competitionQuery.isError && <button onClick={() => void competitionQuery.refetch()} className="mt-3 text-xs font-bold text-[hsl(var(--primary))]">Retry live round</button>}</div></div>;
@@ -252,7 +273,7 @@ function CompetitionPage() {
                 <button onClick={() => setDirection(SubmissionInputDirection.LONG)} disabled={Boolean(mySubmission)} data-testid="button-direction-long" className={`focus-ring flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-[12px] font-extrabold transition-colors ${direction === 'LONG' ? 'border-[hsl(var(--secondary))] bg-[hsl(var(--secondary))] text-[hsl(var(--accent))]' : 'border-[hsl(var(--primary-foreground)/.22)] text-[hsl(var(--primary-foreground)/.72)] hover:border-[hsl(var(--secondary)/.6)]'}`}><ArrowUpRight size={16} /> LONG</button>
                 <button onClick={() => setDirection(SubmissionInputDirection.SHORT)} disabled={Boolean(mySubmission)} data-testid="button-direction-short" className={`focus-ring flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-[12px] font-extrabold transition-colors ${direction === 'SHORT' ? 'border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : 'border-[hsl(var(--primary-foreground)/.22)] text-[hsl(var(--primary-foreground)/.72)] hover:border-[hsl(var(--primary)/.7)]'}`}><ArrowDownRight size={16} /> SHORT</button>
               </div>
-              <button onClick={() => void (wallet ? handleSubmit() : connectWallet())} disabled={countdown.expired || submitMutation.isPending || Boolean(mySubmission) || !selectedMarket} data-testid="button-submit-ride" className="focus-ring mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-3.5 text-[13px] font-extrabold text-[hsl(var(--primary-foreground))] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60">{submitMutation.isPending ? <RefreshCw size={16} className="animate-spin" /> : mySubmission ? <Check size={16} /> : <Zap size={16} />}{mySubmission ? 'Ride locked in' : !selectedMarket ? 'Select a live market' : wallet ? 'Submit immutable ride' : 'Connect wallet to ride'}</button>
+              <button onClick={() => void (wallet ? handleSubmit() : connectWallet())} disabled={wallet ? !canSubmit : countdown.expired || Boolean(mySubmission) || !selectedMarket} data-testid="button-submit-ride" className="focus-ring mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-[hsl(var(--primary))] px-4 py-3.5 text-[13px] font-extrabold text-[hsl(var(--primary-foreground))] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60">{submitMutation.isPending ? <RefreshCw size={16} className="animate-spin" /> : mySubmission ? <Check size={16} /> : <Zap size={16} />}{mySubmission ? 'Ride locked in' : !selectedMarket ? 'Select a live market' : wallet ? 'Submit immutable ride' : 'Connect wallet to ride'}</button>
               <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[10px] text-[hsl(var(--primary-foreground)/.58)]"><ShieldCheck size={12} /> One submission per round · entry price is captured now</p>
               {pricingError && <p data-testid="status-pricing-unavailable" className="mt-3 rounded-lg bg-[hsl(var(--primary-foreground)/.12)] px-3 py-2 text-center text-[11px] text-[hsl(var(--primary-foreground)/.9)]">{pricingError}</p>}
             </div>

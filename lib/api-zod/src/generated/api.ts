@@ -20,6 +20,10 @@ export const HealthCheckResponse = zod.object({
 /**
  * @summary Get the current competition and leaderboard
  */
+export const GetCurrentCompetitionQueryParams = zod.object({
+  "wallet": zod.coerce.string().optional()
+})
+
 export const GetCurrentCompetitionResponse = zod.object({
   "round": zod.object({
   "id": zod.string(),

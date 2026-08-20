@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, lte } from "drizzle-orm";
+import { and, desc, eq, lte, sql } from "drizzle-orm";
 import { db, priceSnapshotsTable, roundsTable, settingsTable, submissionsTable, resultsTable, usersTable } from "@workspace/db";
 import { PricingUnavailableError, quoteMarket, resolveMarket, searchMarkets } from "../lib/pricing";
 import {
@@ -81,24 +81,27 @@ async function ensureSettings() {
 }
 
 async function ensureRound() {
-  const settings = await ensureSettings();
-  const current = now();
-  const existing = await db.select().from(roundsTable).where(and(
-    eq(roundsTable.mode, settings.mode),
-  )).orderBy(desc(roundsTable.opensAt)).limit(1);
-  const round = existing[0];
-  if (round && round.closesAt > current) return round;
-  if (round) await resolveRound(round.id);
-  const duration = settings.mode === "TEST" ? 5 * 60_000 : 60 * 60_000;
-  const [created] = await db.insert(roundsTable).values({
-    id: id("round"),
-    mode: settings.mode,
-    opensAt: current,
-    closesAt: new Date(current.getTime() + duration),
-    resolvesAt: new Date(current.getTime() + duration),
-    participantCount: "0",
-  }).returning();
-  return created;
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('paperride:ensure-round'))`);
+    const settings = await ensureSettings();
+    const current = now();
+    const existing = await db.select().from(roundsTable).where(and(
+      eq(roundsTable.mode, settings.mode),
+    )).orderBy(desc(roundsTable.opensAt), desc(roundsTable.id)).limit(1);
+    const round = existing[0];
+    if (round && round.closesAt > current) return round;
+    if (round) await resolveRound(round.id);
+    const duration = settings.mode === "TEST" ? 5 * 60_000 : 60 * 60_000;
+    const [created] = await db.insert(roundsTable).values({
+      id: id("round"),
+      mode: settings.mode,
+      opensAt: current,
+      closesAt: new Date(current.getTime() + duration),
+      resolvesAt: new Date(current.getTime() + duration),
+      participantCount: "0",
+    }).returning();
+    return created;
+  });
 }
 
 async function marketsFor(assetIds: string[]) {

@@ -33,6 +33,12 @@ paths:
       operationId: getCurrentCompetition
       tags: [competition]
       summary: Get the current competition and leaderboard
+      parameters:
+        - name: wallet
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Current competition

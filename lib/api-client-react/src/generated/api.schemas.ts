@@ -159,6 +159,10 @@ export interface AdminSettingsInput {
   tokenMints: string[];
 }
 
+export type GetCurrentCompetitionParams = {
+wallet?: string;
+};
+
 export type SearchMarketsParams = {
 /**
  * @minLength 2
