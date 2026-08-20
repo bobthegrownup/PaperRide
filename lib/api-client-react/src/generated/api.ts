@@ -26,8 +26,10 @@ import type {
   GetMyHistoryParams,
   HealthStatus,
   HistoryEntry,
+  SearchMarketsParams,
   Submission,
-  SubmissionInput
+  SubmissionInput,
+  Token
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -200,6 +202,90 @@ export function useGetCurrentCompetition<TData = Awaited<ReturnType<typeof getCu
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetCurrentCompetitionQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSearchMarketsUrl = (params: SearchMarketsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/competition/markets/search?${stringifiedParams}` : `/api/competition/markets/search`
+}
+
+/**
+ * @summary Search Solana markets with a live price
+ */
+export const searchMarkets = async (params: SearchMarketsParams, options?: Parameters<typeof customFetch>[1]): Promise<Token[]> => {
+
+  return customFetch<Token[]>(getSearchMarketsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchMarketsQueryKey = (params?: SearchMarketsParams,) => {
+    return [
+    `/api/competition/markets/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchMarketsQueryOptions = <TData = Awaited<ReturnType<typeof searchMarkets>>, TError = ErrorType<void>>(params: SearchMarketsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchMarkets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchMarketsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchMarkets>>> = ({ signal }) => searchMarkets(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchMarkets>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchMarketsQueryResult = NonNullable<Awaited<ReturnType<typeof searchMarkets>>>
+export type SearchMarketsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Search Solana markets with a live price
+ */
+
+export function useSearchMarkets<TData = Awaited<ReturnType<typeof searchMarkets>>, TError = ErrorType<void>>(
+ params: SearchMarketsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchMarkets>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchMarketsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

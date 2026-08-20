@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq, lte } from "drizzle-orm";
 import { db, priceSnapshotsTable, roundsTable, settingsTable, submissionsTable, resultsTable, usersTable } from "@workspace/db";
+import { PricingUnavailableError, quoteMarket, resolveMarket, searchMarkets } from "../lib/pricing";
 import {
   GetAdminSettingsResponse,
   GetCurrentCompetitionResponse,
@@ -14,44 +15,22 @@ import {
 
 const router: IRouter = Router();
 
-const tokenCatalog = [
-  { mint: "So11111111111111111111111111111111111111112", symbol: "SOL", name: "Solana", price: 184.42, change24h: 4.82 },
-  { mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6GxN7z6o9F7K7w", symbol: "BONK", name: "Bonk", price: 0.0000284, change24h: -1.14 },
-  { mint: "H8sKcP6S8YxYfR7dT3VxYzW2mQ9kL4nB6cA1pE5rU8", symbol: "cbBTC", name: "Coinbase Wrapped BTC", price: 104820.18, change24h: 1.62 },
-  { mint: "HYPE111111111111111111111111111111111111111", symbol: "HYPE", name: "Hyperliquid", price: 42.16, change24h: 7.31 },
-];
-
 const now = () => new Date();
 const id = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-async function fetchMarketPrice(mint: string): Promise<{ price: number; source: string } | null> {
-  try {
-    const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(mint)}`, {
-      signal: AbortSignal.timeout(4_000),
-    });
-    if (!response.ok) return null;
-    const payload = await response.json() as { pairs?: Array<{ priceUsd?: string; liquidity?: { usd?: number } }> };
-    const pair = payload.pairs
-      ?.filter((candidate) => Number(candidate.priceUsd) > 0)
-      .sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0))[0];
-    const price = Number(pair?.priceUsd);
-    return Number.isFinite(price) && price > 0 ? { price, source: "dexscreener" } : null;
-  } catch {
-    return null;
-  }
-}
-
-async function capturePrice(roundId: string, mint: string, fallback: number) {
-  const livePrice = await fetchMarketPrice(mint);
+async function capturePrice(roundId: string, assetId: string) {
+  const asset = await resolveMarket(assetId);
+  const quote = await quoteMarket(assetId);
   const snapshot = {
     id: id("price"),
     roundId,
-    tokenMint: mint,
-    price: String(livePrice?.price ?? fallback),
-    source: livePrice?.source ?? "development-fallback",
+    assetId,
+    tokenMint: asset.mint,
+    price: String(quote.price),
+    source: quote.source,
   };
   await db.insert(priceSnapshotsTable).values(snapshot);
-  return { price: Number(snapshot.price), source: snapshot.source };
+  return { asset, price: quote.price, source: quote.source };
 }
 
 async function resolveRound(roundId: string) {
@@ -59,9 +38,18 @@ async function resolveRound(roundId: string) {
   await Promise.allSettled(submissions.map(async (submission) => {
     const previous = await db.select().from(resultsTable).where(eq(resultsTable.submissionId, submission.id));
     if (previous[0]) return;
-    const token = tokenCatalog.find((candidate) => candidate.mint === submission.tokenMint);
-    if (!token) return;
-    const exit = await capturePrice(roundId, submission.tokenMint, token.price);
+    let exit;
+    try {
+      exit = await capturePrice(roundId, submission.assetId);
+    } catch (error) {
+      console.warn("PaperRide exit price unavailable; retrying on the next resolution sweep.", {
+        roundId,
+        submissionId: submission.id,
+        assetId: submission.assetId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
     const entry = Number(submission.entryPrice);
     const returnPct = submission.direction === "LONG"
       ? ((exit.price - entry) / entry) * 100
@@ -87,7 +75,7 @@ async function ensureSettings() {
   const [created] = await db.insert(settingsTable).values({
     id: "default",
     mode: "TEST",
-    tokenMints: tokenCatalog.map((token) => token.mint),
+    tokenMints: [],
   }).returning();
   return created;
 }
@@ -113,21 +101,21 @@ async function ensureRound() {
   return created;
 }
 
-function tokensFor(mints: string[]) {
-  return tokenCatalog.filter((token) => mints.includes(token.mint));
+async function marketsFor(assetIds: string[]) {
+  const resolved = await Promise.allSettled(assetIds.map((assetId) => resolveMarket(
+    assetId.startsWith("solana:") ? assetId : `solana:${assetId}`,
+  )));
+  return resolved.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
 }
 
 router.get("/competition/current", async (req, res): Promise<void> => {
-  const settings = await ensureSettings();
   const round = await ensureRound();
   const wallet = typeof req.query.wallet === "string" ? req.query.wallet : undefined;
   const submissions = await db.select().from(submissionsTable).where(eq(submissionsTable.roundId, round.id));
   const allResults = await db.select().from(resultsTable).where(eq(resultsTable.roundId, round.id));
   const leaderboard = submissions.map((submission) => {
     const result = allResults.find((item) => item.submissionId === submission.id);
-    const entry = Number(submission.entryPrice);
-    const exit = result ? Number(result.exitPrice) : entry;
-    const returnPct = result ? Number(result.returnPct) : submission.direction === "LONG" ? 0.84 : -0.84;
+    const returnPct = result ? Number(result.returnPct) : 0;
     return {
       wallet: submission.wallet,
       tokenSymbol: submission.tokenSymbol,
@@ -142,7 +130,7 @@ router.get("/competition/current", async (req, res): Promise<void> => {
       ...round,
       participantCount: Number(round.participantCount),
     },
-    tokens: tokensFor(settings.tokenMints),
+    tokens: [],
     leaderboard,
     totalPlayers: submissions.length,
     mySubmission: mySubmission ? {
@@ -151,6 +139,23 @@ router.get("/competition/current", async (req, res): Promise<void> => {
     } : null,
   };
   res.json(GetCurrentCompetitionResponse.parse(response));
+});
+
+router.get("/competition/markets/search", async (req, res): Promise<void> => {
+  const query = typeof req.query.q === "string" ? req.query.q : "";
+  if (query.trim().length < 2) {
+    res.status(400).json({ error: "Enter at least two characters to search markets." });
+    return;
+  }
+  try {
+    res.json(await searchMarkets(query));
+  } catch (error) {
+    const message = error instanceof PricingUnavailableError
+      ? error.message
+      : "Market search is temporarily unavailable.";
+    req.log.warn({ err: error }, "Market search unavailable");
+    res.status(503).json({ error: message });
+  }
 });
 
 router.post("/competition/submissions", async (req, res): Promise<void> => {
@@ -164,12 +169,6 @@ router.post("/competition/submissions", async (req, res): Promise<void> => {
     res.status(400).json({ error: "This round has closed." });
     return;
   }
-  const settings = await ensureSettings();
-  const token = tokenCatalog.find((candidate) => candidate.mint === parsed.data.tokenMint && settings.tokenMints.includes(candidate.mint));
-  if (!token) {
-    res.status(400).json({ error: "That token is not eligible for this round." });
-    return;
-  }
   const alreadySubmitted = await db.select().from(submissionsTable).where(and(
     eq(submissionsTable.roundId, round.id),
     eq(submissionsTable.wallet, parsed.data.wallet),
@@ -179,13 +178,24 @@ router.post("/competition/submissions", async (req, res): Promise<void> => {
     return;
   }
   await db.insert(usersTable).values({ wallet: parsed.data.wallet }).onConflictDoNothing();
-  const entry = await capturePrice(round.id, token.mint, token.price);
+  let entry;
+  try {
+    entry = await capturePrice(round.id, parsed.data.assetId);
+  } catch (error) {
+    const message = error instanceof PricingUnavailableError
+      ? error.message
+      : "A live entry price could not be captured.";
+    req.log.warn({ err: error, assetId: parsed.data.assetId }, "PaperRide entry price unavailable");
+    res.status(409).json({ error: message, code: "PRICING_UNAVAILABLE" });
+    return;
+  }
   const [submission] = await db.insert(submissionsTable).values({
     id: id("ride"),
     wallet: parsed.data.wallet,
     roundId: round.id,
-    tokenMint: token.mint,
-    tokenSymbol: token.symbol,
+    assetId: entry.asset.assetId,
+    tokenMint: entry.asset.mint,
+    tokenSymbol: entry.asset.symbol,
     direction: parsed.data.direction,
     entryPrice: String(entry.price),
   }).returning();
@@ -202,14 +212,22 @@ router.get("/competition/history", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const submissions = await db.select().from(submissionsTable).where(eq(submissionsTable.wallet, parsed.data.wallet));
-  const response = submissions.map((submission) => ({
+  const submissions = await db.select({
+    submission: submissionsTable,
+    round: roundsTable,
+    result: resultsTable,
+  }).from(submissionsTable)
+    .innerJoin(roundsTable, eq(roundsTable.id, submissionsTable.roundId))
+    .leftJoin(resultsTable, eq(resultsTable.submissionId, submissionsTable.id))
+    .where(eq(submissionsTable.wallet, parsed.data.wallet))
+    .orderBy(desc(submissionsTable.entryTimestamp));
+  const response = submissions.map(({ submission, round, result }) => ({
     roundId: submission.roundId,
-    mode: "TEST" as const,
+    mode: round.mode,
     tokenSymbol: submission.tokenSymbol,
     direction: submission.direction,
-    returnPct: 0,
-    status: "PENDING" as const,
+    returnPct: result ? Number(result.returnPct) : 0,
+    status: result ? Number(result.returnPct) >= 0 ? "WON" as const : "LOST" as const : "PENDING" as const,
     date: submission.entryTimestamp,
   }));
   res.json(GetMyHistoryResponse.parse(response));
@@ -219,7 +237,7 @@ router.get("/admin/settings", async (_req, res): Promise<void> => {
   const settings = await ensureSettings();
   res.json(GetAdminSettingsResponse.parse({
     mode: settings.mode,
-    tokens: tokensFor(settings.tokenMints),
+    tokens: await marketsFor(settings.tokenMints),
   }));
 });
 
@@ -235,7 +253,7 @@ router.patch("/admin/settings", async (req, res): Promise<void> => {
   }).where(eq(settingsTable.id, "default")).returning();
   res.json(UpdateAdminSettingsResponse.parse({
     mode: settings.mode,
-    tokens: tokensFor(settings.tokenMints),
+    tokens: await marketsFor(settings.tokenMints),
   }));
 });
 

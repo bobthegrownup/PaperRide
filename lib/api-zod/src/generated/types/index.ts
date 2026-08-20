@@ -21,6 +21,7 @@ export * from './leaderboardEntry';
 export * from './leaderboardEntryDirection';
 export * from './round';
 export * from './roundMode';
+export * from './searchMarketsParams';
 export * from './submission';
 export * from './submissionDirection';
 export * from './submissionInput';

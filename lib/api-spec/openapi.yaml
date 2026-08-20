@@ -40,6 +40,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CompetitionState"
+  /competition/markets/search:
+    get:
+      operationId: searchMarkets
+      tags: [competition]
+      summary: Search Solana markets with a live price
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+      responses:
+        "200":
+          description: Markets with a live price available
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Token"
+        "503":
+          description: Pricing unavailable
   /competition/submissions:
     post:
       operationId: submitPaperRide
@@ -119,8 +142,10 @@ components:
         - status
     Token:
       type: object
-      required: [mint, symbol, name, price, change24h]
+      required: [assetId, provider, mint, symbol, name, price, change24h]
       properties:
+        assetId: { type: string }
+        provider: { type: string }
         mint: { type: string }
         symbol: { type: string }
         name: { type: string }
@@ -164,18 +189,19 @@ components:
             - type: "null"
     SubmissionInput:
       type: object
-      required: [wallet, tokenMint, direction]
+      required: [wallet, assetId, direction]
       properties:
         wallet: { type: string, minLength: 1 }
-        tokenMint: { type: string, minLength: 1 }
+        assetId: { type: string, minLength: 1 }
         direction: { type: string, enum: [LONG, SHORT] }
     Submission:
       type: object
-      required: [id, wallet, roundId, tokenMint, tokenSymbol, direction, entryPrice, entryTimestamp]
+      required: [id, wallet, roundId, assetId, tokenMint, tokenSymbol, direction, entryPrice, entryTimestamp]
       properties:
         id: { type: string }
         wallet: { type: string }
         roundId: { type: string }
+        assetId: { type: string }
         tokenMint: { type: string }
         tokenSymbol: { type: string }
         direction: { type: string, enum: [LONG, SHORT] }

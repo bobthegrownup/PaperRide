@@ -7,6 +7,8 @@
  */
 
 export interface Token {
+  assetId: string;
+  provider: string;
   mint: string;
   symbol: string;
   name: string;

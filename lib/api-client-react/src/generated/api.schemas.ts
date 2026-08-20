@@ -10,6 +10,8 @@ export interface HealthStatus {
 }
 
 export interface Token {
+  assetId: string;
+  provider: string;
   mint: string;
   symbol: string;
   name: string;
@@ -63,6 +65,7 @@ export interface Submission {
   id: string;
   wallet: string;
   roundId: string;
+  assetId: string;
   tokenMint: string;
   tokenSymbol: string;
   direction: SubmissionDirection;
@@ -90,7 +93,7 @@ export interface SubmissionInput {
   /** @minLength 1 */
   wallet: string;
   /** @minLength 1 */
-  tokenMint: string;
+  assetId: string;
   direction: SubmissionInputDirection;
 }
 
@@ -155,6 +158,13 @@ export interface AdminSettingsInput {
   /** @items.minLength 1 */
   tokenMints: string[];
 }
+
+export type SearchMarketsParams = {
+/**
+ * @minLength 2
+ */
+q: string;
+};
 
 export type GetMyHistoryParams = {
 wallet: string;
