@@ -1,0 +1,58 @@
+Build a mobile-first web app called PaperRide, a competitive crypto paper-trading game on Solana.
+
+Users connect a Solana wallet and enter the current 1-hour competition.
+
+Core flow
+
+1. Connect Solana wallet.
+2. Display the current competition and countdown.
+3. User selects an eligible token.
+4. User selects LONG or SHORT.
+5. User submits the PaperRide.
+6. Record wallet, token mint, direction, entry price, entry timestamp and round ID in the database.
+7. The position cannot be changed after submission.
+8. At exactly 1 hour, obtain the exit price and calculate percentage return.
+9. Rank all participants by signed return.
+10. Display the winner and complete leaderboard.
+
+For development, add an admin-controlled TEST MODE where rounds last 5 minutes instead of 1 hour. Test results must be completely separate from production statistics.
+
+Important architecture
+The database is the source of truth. Do not use an AI agent or chat history to store competition state.
+
+Create database tables for:
+users, rounds, submissions, price_snapshots, results.
+
+Every round needs a unique ID and explicit opens_at, closes_at, resolves_at timestamps.
+
+Every submission needs a unique ID, wallet address, round ID, token mint, token symbol, LONG/SHORT direction, entry price and immutable entry timestamp.
+
+Price fetching must use a reliable crypto price API. Identify tokens primarily by mint address, not ticker, to avoid ambiguity.
+
+If one token’s price API fails, it must not prevent other submissions from being accepted or resolved. Store price source and timestamp.
+
+Scoring
+LONG = (exit - entry) / entry
+SHORT = (entry - exit) / entry
+
+Highest signed percentage return wins. If everyone loses, display the rankings but state that the round had no profitable winner.
+
+V1 UI
+Keep it extremely simple:
+PAPERRIDE
+Next round ends in 42:18
+
+[SOL] [BONK] [cbBTC] [HYPE]
+
+[LONG] [SHORT]
+
+[SUBMIT PAPER RIDE]
+
+Then show:
+LIVE ROUND
+LEADERBOARD
+MY HISTORY
+
+Build an admin page where I can add/remove eligible token mint addresses and switch between 5-minute TEST MODE and 1-hour PRODUCTION MODE.
+
+Do not implement real trading, token rewards, Ride integration, staking, or AI scoring yet.

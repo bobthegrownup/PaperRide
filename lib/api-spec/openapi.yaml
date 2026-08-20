@@ -10,6 +10,10 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: competition
+    description: PaperRide competition operations
+  - name: admin
+    description: Admin controls
 paths:
   /healthz:
     get:
@@ -24,6 +28,86 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /competition/current:
+    get:
+      operationId: getCurrentCompetition
+      tags: [competition]
+      summary: Get the current competition and leaderboard
+      responses:
+        "200":
+          description: Current competition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompetitionState"
+  /competition/submissions:
+    post:
+      operationId: submitPaperRide
+      tags: [competition]
+      summary: Submit an immutable paper ride
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmissionInput"
+      responses:
+        "201":
+          description: Submission accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Submission"
+        "400":
+          description: Invalid submission
+  /competition/history:
+    get:
+      operationId: getMyHistory
+      tags: [competition]
+      parameters:
+        - name: wallet
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Player history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoryEntry"
+  /admin/settings:
+    get:
+      operationId: getAdminSettings
+      tags: [admin]
+      summary: Get competition settings
+      responses:
+        "200":
+          description: Admin settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSettings"
+    patch:
+      operationId: updateAdminSettings
+      tags: [admin]
+      summary: Update competition mode and eligible tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminSettingsInput"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSettings"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +117,95 @@ components:
           type: string
       required:
         - status
+    Token:
+      type: object
+      required: [mint, symbol, name, price, change24h]
+      properties:
+        mint: { type: string }
+        symbol: { type: string }
+        name: { type: string }
+        price: { type: number }
+        change24h: { type: number }
+    Round:
+      type: object
+      required: [id, mode, opensAt, closesAt, resolvesAt, participantCount]
+      properties:
+        id: { type: string }
+        mode: { type: string, enum: [TEST, PRODUCTION] }
+        opensAt: { type: string, format: date-time }
+        closesAt: { type: string, format: date-time }
+        resolvesAt: { type: string, format: date-time }
+        participantCount: { type: number }
+    LeaderboardEntry:
+      type: object
+      required: [rank, wallet, tokenSymbol, direction, returnPct, isMe]
+      properties:
+        rank: { type: number }
+        wallet: { type: string }
+        tokenSymbol: { type: string }
+        direction: { type: string, enum: [LONG, SHORT] }
+        returnPct: { type: number }
+        isMe: { type: boolean }
+    CompetitionState:
+      type: object
+      required: [round, tokens, leaderboard, totalPlayers, mySubmission]
+      properties:
+        round: { $ref: "#/components/schemas/Round" }
+        tokens:
+          type: array
+          items: { $ref: "#/components/schemas/Token" }
+        leaderboard:
+          type: array
+          items: { $ref: "#/components/schemas/LeaderboardEntry" }
+        totalPlayers: { type: number }
+        mySubmission:
+          anyOf:
+            - $ref: "#/components/schemas/Submission"
+            - type: "null"
+    SubmissionInput:
+      type: object
+      required: [wallet, tokenMint, direction]
+      properties:
+        wallet: { type: string, minLength: 1 }
+        tokenMint: { type: string, minLength: 1 }
+        direction: { type: string, enum: [LONG, SHORT] }
+    Submission:
+      type: object
+      required: [id, wallet, roundId, tokenMint, tokenSymbol, direction, entryPrice, entryTimestamp]
+      properties:
+        id: { type: string }
+        wallet: { type: string }
+        roundId: { type: string }
+        tokenMint: { type: string }
+        tokenSymbol: { type: string }
+        direction: { type: string, enum: [LONG, SHORT] }
+        entryPrice: { type: number }
+        entryTimestamp: { type: string, format: date-time }
+    HistoryEntry:
+      type: object
+      required: [roundId, mode, tokenSymbol, direction, returnPct, status, date]
+      properties:
+        roundId: { type: string }
+        mode: { type: string, enum: [TEST, PRODUCTION] }
+        tokenSymbol: { type: string }
+        direction: { type: string, enum: [LONG, SHORT] }
+        returnPct: { type: number }
+        status: { type: string, enum: [WON, LOST, PENDING] }
+        date: { type: string, format: date-time }
+    AdminSettings:
+      type: object
+      required: [mode, tokens]
+      properties:
+        mode: { type: string, enum: [TEST, PRODUCTION] }
+        tokens:
+          type: array
+          items: { $ref: "#/components/schemas/Token" }
+    AdminSettingsInput:
+      type: object
+      required: [mode, tokenMints]
+      properties:
+        mode: { type: string, enum: [TEST, PRODUCTION] }
+        tokenMints:
+          type: array
+          items: { type: string, minLength: 1 }
 

@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "PaperRide"
+description = "A competitive Solana paper-trading game where players choose LONG or SHORT positions in timed rounds, compete on signed returns, and review their history."
+version = "1.0.0"
+id = "artifacts/paperride"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23783
+
+[services.development]
+run = "pnpm --filter @workspace/paperride run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/paperride", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/paperride/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23783"
+BASE_PATH = "/"
