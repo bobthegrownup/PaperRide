@@ -11,6 +11,6 @@ export interface SubmissionInput {
   /** @minLength 1 */
   wallet: string;
   /** @minLength 1 */
-  tokenMint: string;
+  assetId: string;
   direction: SubmissionInputDirection;
 }

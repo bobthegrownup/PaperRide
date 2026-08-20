@@ -11,6 +11,7 @@ export interface Submission {
   id: string;
   wallet: string;
   roundId: string;
+  assetId: string;
   tokenMint: string;
   tokenSymbol: string;
   direction: SubmissionDirection;

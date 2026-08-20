@@ -23,6 +23,7 @@ export const submissionsTable = pgTable("paperride_submissions", {
   id: text("id").primaryKey(),
   wallet: text("wallet").notNull().references(() => usersTable.wallet),
   roundId: text("round_id").notNull().references(() => roundsTable.id),
+  assetId: text("asset_id").notNull().default("legacy:unknown"),
   tokenMint: text("token_mint").notNull(),
   tokenSymbol: text("token_symbol").notNull(),
   direction: directionEnum("direction").notNull(),
@@ -33,6 +34,7 @@ export const submissionsTable = pgTable("paperride_submissions", {
 export const priceSnapshotsTable = pgTable("paperride_price_snapshots", {
   id: text("id").primaryKey(),
   roundId: text("round_id").notNull().references(() => roundsTable.id),
+  assetId: text("asset_id").notNull().default("legacy:unknown"),
   tokenMint: text("token_mint").notNull(),
   price: numeric("price").notNull(),
   source: text("source").notNull(),

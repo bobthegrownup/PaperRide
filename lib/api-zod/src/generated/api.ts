@@ -30,6 +30,8 @@ export const GetCurrentCompetitionResponse = zod.object({
   "participantCount": zod.number()
 }),
   "tokens": zod.array(zod.object({
+  "assetId": zod.string(),
+  "provider": zod.string(),
   "mint": zod.string(),
   "symbol": zod.string(),
   "name": zod.string(),
@@ -49,6 +51,7 @@ export const GetCurrentCompetitionResponse = zod.object({
   "id": zod.string(),
   "wallet": zod.string(),
   "roundId": zod.string(),
+  "assetId": zod.string(),
   "tokenMint": zod.string(),
   "tokenSymbol": zod.string(),
   "direction": zod.enum(['LONG', 'SHORT']),
@@ -56,6 +59,29 @@ export const GetCurrentCompetitionResponse = zod.object({
   "entryTimestamp": zod.coerce.date()
 }),zod.null()])
 })
+
+
+/**
+ * @summary Search Solana markets with a live price
+ */
+export const searchMarketsQueryQMin = 2;
+
+
+
+export const SearchMarketsQueryParams = zod.object({
+  "q": zod.coerce.string().min(searchMarketsQueryQMin)
+})
+
+export const SearchMarketsResponseItem = zod.object({
+  "assetId": zod.string(),
+  "provider": zod.string(),
+  "mint": zod.string(),
+  "symbol": zod.string(),
+  "name": zod.string(),
+  "price": zod.number(),
+  "change24h": zod.number()
+})
+export const SearchMarketsResponse = zod.array(SearchMarketsResponseItem)
 
 
 /**
@@ -67,7 +93,7 @@ export const GetCurrentCompetitionResponse = zod.object({
 
 export const SubmitPaperRideBody = zod.object({
   "wallet": zod.string().min(1),
-  "tokenMint": zod.string().min(1),
+  "assetId": zod.string().min(1),
   "direction": zod.enum(['LONG', 'SHORT'])
 })
 
@@ -75,6 +101,7 @@ export const SubmitPaperRideResponse = zod.object({
   "id": zod.string(),
   "wallet": zod.string(),
   "roundId": zod.string(),
+  "assetId": zod.string(),
   "tokenMint": zod.string(),
   "tokenSymbol": zod.string(),
   "direction": zod.enum(['LONG', 'SHORT']),
@@ -105,6 +132,8 @@ export const GetMyHistoryResponse = zod.array(GetMyHistoryResponseItem)
 export const GetAdminSettingsResponse = zod.object({
   "mode": zod.enum(['TEST', 'PRODUCTION']),
   "tokens": zod.array(zod.object({
+  "assetId": zod.string(),
+  "provider": zod.string(),
   "mint": zod.string(),
   "symbol": zod.string(),
   "name": zod.string(),
@@ -128,6 +157,8 @@ export const UpdateAdminSettingsBody = zod.object({
 export const UpdateAdminSettingsResponse = zod.object({
   "mode": zod.enum(['TEST', 'PRODUCTION']),
   "tokens": zod.array(zod.object({
+  "assetId": zod.string(),
+  "provider": zod.string(),
   "mint": zod.string(),
   "symbol": zod.string(),
   "name": zod.string(),
