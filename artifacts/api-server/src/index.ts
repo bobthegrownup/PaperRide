@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { resolveClosedRounds } from "./routes/competition";
 
 const rawPort = process.env["PORT"];
 
@@ -23,3 +24,11 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
 });
+
+const resolutionTimer = setInterval(() => {
+  void resolveClosedRounds().catch((err) => {
+    logger.error({ err }, "Round resolution sweep failed");
+  });
+}, 5_000);
+
+resolutionTimer.unref();

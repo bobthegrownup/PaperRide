@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
-import { db, roundsTable, settingsTable, submissionsTable, resultsTable, usersTable } from "@workspace/db";
+import { and, desc, eq, lte } from "drizzle-orm";
+import { db, priceSnapshotsTable, roundsTable, settingsTable, submissionsTable, resultsTable, usersTable } from "@workspace/db";
 import {
   GetAdminSettingsResponse,
   GetCurrentCompetitionResponse,
@@ -24,6 +24,63 @@ const tokenCatalog = [
 const now = () => new Date();
 const id = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
+async function fetchMarketPrice(mint: string): Promise<{ price: number; source: string } | null> {
+  try {
+    const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(mint)}`, {
+      signal: AbortSignal.timeout(4_000),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json() as { pairs?: Array<{ priceUsd?: string; liquidity?: { usd?: number } }> };
+    const pair = payload.pairs
+      ?.filter((candidate) => Number(candidate.priceUsd) > 0)
+      .sort((a, b) => (b.liquidity?.usd ?? 0) - (a.liquidity?.usd ?? 0))[0];
+    const price = Number(pair?.priceUsd);
+    return Number.isFinite(price) && price > 0 ? { price, source: "dexscreener" } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function capturePrice(roundId: string, mint: string, fallback: number) {
+  const livePrice = await fetchMarketPrice(mint);
+  const snapshot = {
+    id: id("price"),
+    roundId,
+    tokenMint: mint,
+    price: String(livePrice?.price ?? fallback),
+    source: livePrice?.source ?? "development-fallback",
+  };
+  await db.insert(priceSnapshotsTable).values(snapshot);
+  return { price: Number(snapshot.price), source: snapshot.source };
+}
+
+async function resolveRound(roundId: string) {
+  const submissions = await db.select().from(submissionsTable).where(eq(submissionsTable.roundId, roundId));
+  await Promise.allSettled(submissions.map(async (submission) => {
+    const previous = await db.select().from(resultsTable).where(eq(resultsTable.submissionId, submission.id));
+    if (previous[0]) return;
+    const token = tokenCatalog.find((candidate) => candidate.mint === submission.tokenMint);
+    if (!token) return;
+    const exit = await capturePrice(roundId, submission.tokenMint, token.price);
+    const entry = Number(submission.entryPrice);
+    const returnPct = submission.direction === "LONG"
+      ? ((exit.price - entry) / entry) * 100
+      : ((entry - exit.price) / entry) * 100;
+    await db.insert(resultsTable).values({
+      id: id("result"),
+      submissionId: submission.id,
+      roundId,
+      exitPrice: String(exit.price),
+      returnPct: String(returnPct),
+    });
+  }));
+}
+
+export async function resolveClosedRounds(): Promise<void> {
+  const closedRounds = await db.select().from(roundsTable).where(lte(roundsTable.closesAt, now()));
+  await Promise.allSettled(closedRounds.map((round) => resolveRound(round.id)));
+}
+
 async function ensureSettings() {
   const existing = await db.select().from(settingsTable).where(eq(settingsTable.id, "default"));
   if (existing[0]) return existing[0];
@@ -43,6 +100,7 @@ async function ensureRound() {
   )).orderBy(desc(roundsTable.opensAt)).limit(1);
   const round = existing[0];
   if (round && round.closesAt > current) return round;
+  if (round) await resolveRound(round.id);
   const duration = settings.mode === "TEST" ? 5 * 60_000 : 60 * 60_000;
   const [created] = await db.insert(roundsTable).values({
     id: id("round"),
@@ -121,6 +179,7 @@ router.post("/competition/submissions", async (req, res): Promise<void> => {
     return;
   }
   await db.insert(usersTable).values({ wallet: parsed.data.wallet }).onConflictDoNothing();
+  const entry = await capturePrice(round.id, token.mint, token.price);
   const [submission] = await db.insert(submissionsTable).values({
     id: id("ride"),
     wallet: parsed.data.wallet,
@@ -128,7 +187,7 @@ router.post("/competition/submissions", async (req, res): Promise<void> => {
     tokenMint: token.mint,
     tokenSymbol: token.symbol,
     direction: parsed.data.direction,
-    entryPrice: String(token.price),
+    entryPrice: String(entry.price),
   }).returning();
   await db.update(roundsTable).set({ participantCount: String(Number(round.participantCount) + 1) }).where(eq(roundsTable.id, round.id));
   res.status(201).json(SubmitPaperRideResponse.parse({
