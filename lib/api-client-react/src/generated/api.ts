@@ -23,6 +23,7 @@ import type {
   AdminSettings,
   AdminSettingsInput,
   CompetitionState,
+  GetCurrentCompetitionParams,
   GetMyHistoryParams,
   HealthStatus,
   HistoryEntry,
@@ -137,20 +138,27 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
-export const getGetCurrentCompetitionUrl = () => {
+export const getGetCurrentCompetitionUrl = (params?: GetCurrentCompetitionParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/competition/current`
+  return stringifiedParams.length > 0 ? `/api/competition/current?${stringifiedParams}` : `/api/competition/current`
 }
 
 /**
  * @summary Get the current competition and leaderboard
  */
-export const getCurrentCompetition = async ( options?: Parameters<typeof customFetch>[1]): Promise<CompetitionState> => {
+export const getCurrentCompetition = async (params?: GetCurrentCompetitionParams, options?: Parameters<typeof customFetch>[1]): Promise<CompetitionState> => {
 
-  return customFetch<CompetitionState>(getGetCurrentCompetitionUrl(),
+  return customFetch<CompetitionState>(getGetCurrentCompetitionUrl(params),
   {
     ...options,
     method: 'GET'
@@ -163,23 +171,23 @@ export const getCurrentCompetition = async ( options?: Parameters<typeof customF
 
 
 
-export const getGetCurrentCompetitionQueryKey = () => {
+export const getGetCurrentCompetitionQueryKey = (params?: GetCurrentCompetitionParams,) => {
     return [
-    `/api/competition/current`
+    `/api/competition/current`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetCurrentCompetitionQueryOptions = <TData = Awaited<ReturnType<typeof getCurrentCompetition>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentCompetition>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetCurrentCompetitionQueryOptions = <TData = Awaited<ReturnType<typeof getCurrentCompetition>>, TError = ErrorType<unknown>>(params?: GetCurrentCompetitionParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentCompetition>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetCurrentCompetitionQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetCurrentCompetitionQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCurrentCompetition>>> = ({ signal }) => getCurrentCompetition({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCurrentCompetition>>> = ({ signal }) => getCurrentCompetition(params, { signal, ...requestOptions });
 
 
 
@@ -197,11 +205,11 @@ export type GetCurrentCompetitionQueryError = ErrorType<unknown>
  */
 
 export function useGetCurrentCompetition<TData = Awaited<ReturnType<typeof getCurrentCompetition>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentCompetition>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetCurrentCompetitionParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCurrentCompetition>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetCurrentCompetitionQueryOptions(options)
+  const queryOptions = getGetCurrentCompetitionQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

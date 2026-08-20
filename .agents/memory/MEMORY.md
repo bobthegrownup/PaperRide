@@ -1,0 +1,1 @@
+- [PaperRide round consistency](paperride-round-consistency.md) — polling at round boundaries requires serialized creation and deterministic current-round selection.

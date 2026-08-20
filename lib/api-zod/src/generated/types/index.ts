@@ -11,6 +11,7 @@ export * from './adminSettingsInput';
 export * from './adminSettingsInputMode';
 export * from './adminSettingsMode';
 export * from './competitionState';
+export * from './getCurrentCompetitionParams';
 export * from './getMyHistoryParams';
 export * from './healthStatus';
 export * from './historyEntry';
